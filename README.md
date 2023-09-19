@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.artbits:sqlite-java:1.0.0'
+    implementation 'com.github.artbits:sqlite-java:1.0.1'
 }
 ```
 Maven:
@@ -34,7 +34,7 @@ Maven:
 <dependency>
     <groupId>com.github.artbits</groupId>
     <artifactId>sqlite-java</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
