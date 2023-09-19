@@ -134,7 +134,7 @@ final class Reflect<T> {
     static <T> T toEntity(Class<T> tClass, Options options, ResultSet resultSet) {
         try {
             Map<String, Boolean> columnsMap = new HashMap<>();
-            if (!Objects.equals(options.selectColumns, "*")) {
+            if (options != null && options.selectColumns != null && !Objects.equals(options.selectColumns, "*")) {
                 String[] columns = options.selectColumns.split(", ");
                 for (String column : columns) {
                     columnsMap.put(column, true);
