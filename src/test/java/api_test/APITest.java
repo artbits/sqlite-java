@@ -23,7 +23,7 @@ public final class APITest {
     }
 
 
-    public class Book extends DataSupport<Book> {
+    public static class Book extends DataSupport<Book> {
         public String name;
         public String author;
         public Double price;
