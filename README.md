@@ -10,6 +10,7 @@
 ## Features
  + Support for automatic table creation and addition columns.
  + Provide APIs for adding, deleting, modifying, and querying.
+ + Provides aggregate function APIs.
  + APIs are simple, elegant and efficient to use.
 
 
@@ -21,7 +22,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.artbits:sqlite-java:1.0.1'
+    implementation 'com.github.artbits:sqlite-java:1.0.2'
 }
 ```
 Maven:
@@ -34,33 +35,32 @@ Maven:
 <dependency>
     <groupId>com.github.artbits</groupId>
     <artifactId>sqlite-java</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
 </dependency>
 ```
 
 
 ## Usage
-Let Java classes be mapped into database tables.
+Let Java classes be mapped into database tables. extends ``DataSupport`` class. The fields ``id``, ``createdAt``, and ``updatedAt`` are internal fields, please read them only when using them.
 ```java
-public class User {
-    public Long id;
+public static class User extends DataSupport<User> {
     public String name;
     public Integer age;
     public Boolean vip;
 
     public User(Consumer<User> consumer) {
-        consumer.accept(this);
+        super(consumer);
     }
 }
 
-public class Book {
-    public Long id;
+
+public class Book extends DataSupport<Book> {
     public String name;
     public String author;
     public Double price;
 
     public Book(Consumer<Book> consumer) {
-        consumer.accept(this);
+        super(consumer);
     }
 }
 ```
@@ -76,7 +76,7 @@ Insert data.
 // No need to set ID, ID will increase automatically when inserting data.
 User user = new User(u -> {u.name = "Lake"; u.age = 25; u.vip = true;});
 db.insert(user);
-System.out.printf("userId = %d", user.id);
+user.printJson();
 ```
 
 Update data.
@@ -103,7 +103,7 @@ db.delete(User.class, 1L, 2L, 3L);
 db.delete(User.class, Arrays.asList(1L, 2L, 3L));
 
 // Delete data by condition.
-db.delete(User.class, "name = ?", "Lake");
+db.delete(User.class, "name = ? && vip = ?", "Lake", false);
 ```
 
 Query data.
@@ -113,6 +113,18 @@ User user1 = db.findOne(User.class, 1L);
 
 // Find one by condition.
 User user2 = db.findOne(User.class, "name = ?", "Lake");
+
+// Find first.
+User user3 = db.first(User.class);
+
+// Find first by condition.
+User user4 = db.first(User.class, "vip = ?", true);
+
+// Find last.
+User user1 = db.last(User.class);
+
+// Find last by condition.
+User user2 = db.last(User.class, "vip = ?", false);
 
 // Find all.
 List<User> users1 = db.findAll(User.class);
@@ -126,10 +138,28 @@ List<User> users3 = db.find(User.class, Arrays.asList(1L, 2L, 3L));
 // Find many by custom option rules. Options APIs are optional, choose according to actual needs.
 List<User> users4 = db.find(User.class, options -> options
         .select("name", "age")
-        .where("age <= ?", 50)
+        .where("age <= ? && vip = ?", 50, true)
         .order("age", Options.DESC)
         .limit(5)
         .offset(1));
+```
+
+Aggregate function.
+```java
+long count1 = db.count(User.class);
+long count2 = db.count(User.class, "vip = ?", true);
+
+double average1 = db.average(User.class, "age");
+double average2 = db.average(User.class, "age", "vip = ?", false);
+
+int sum1 = db.sum(User.class, "age").intValue();
+int sum2 = db.sum(User.class, "age", "vip = ?", false).intValue();
+
+int max1 = db.max(User.class, "age").intValue();
+int max2 = db.max(User.class, "age", "vip = ?", false).intValue();
+
+int min1 = db.min(User.class, "age").intValue();
+int min2 = db.min(User.class, "age", "vip = ?", true).intValue();
 ```
 
 
