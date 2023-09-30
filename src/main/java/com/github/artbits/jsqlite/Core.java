@@ -108,13 +108,26 @@ final class Core implements DB {
 
 
     @Override
-    public <T> void insert(T t) {
+    public String version() {
+        String s = "select sqlite_version();";
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? resultSet.getString(1) : "unknown";
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> void insert(T t) {
         synchronized (this) {
             try (Statement statement = connection.createStatement()) {
+                t.createdAt = System.currentTimeMillis();
+                t.updatedAt = t.createdAt;
                 statement.executeUpdate(SQLTemplate.insert(t));
                 try (ResultSet result = statement.executeQuery("select last_insert_rowid()")) {
                     if (result.next()) {
-                        new Reflect<>(t).setValue("id", result.getLong(1));
+                        t.id = result.getLong(1);
                     }
                 }
             } catch (Exception e) {
@@ -125,9 +138,10 @@ final class Core implements DB {
 
 
     @Override
-    public <T> void update(T t, String predicate, Object... args) {
+    public <T extends DataSupport<T>> void update(T t, String predicate, Object... args) {
         synchronized (this) {
             try (Statement statement = connection.createStatement()) {
+                t.updatedAt = System.currentTimeMillis();
                 statement.executeUpdate(SQLTemplate.update(t, new Options().where(predicate, args)));
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -137,14 +151,13 @@ final class Core implements DB {
 
 
     @Override
-    public <T> void update(T t) {
-        Object id = new Reflect<T>(t).getValue("id");
-        update(t, "id = ?", id);
+    public <T extends DataSupport<T>> void update(T t) {
+        update(t, "id = ?", t.id());
     }
 
 
     @Override
-    public void delete(Class<?> tClass, String predicate, Object... args) {
+    public <T extends DataSupport<T>> void delete(Class<T> tClass, String predicate, Object... args) {
         synchronized (this) {
             String sql = SQLTemplate.delete(tClass, new Options().where(predicate, args));
             try (Statement statement = connection.createStatement()) {
@@ -157,7 +170,7 @@ final class Core implements DB {
 
 
     @Override
-    public void delete(Class<?> tClass, List<Long> ids) {
+    public <T extends DataSupport<T>> void delete(Class<T> tClass, List<Long> ids) {
         StringBuilder builder = new StringBuilder(String.valueOf(ids));
         builder.deleteCharAt(0).deleteCharAt(builder.length() - 1);
         delete(tClass, "id in(?)", builder);
@@ -165,19 +178,19 @@ final class Core implements DB {
 
 
     @Override
-    public void delete(Class<?> tClass, Long... ids) {
+    public <T extends DataSupport<T>> void delete(Class<T> tClass, Long... ids) {
         delete(tClass, Arrays.asList(ids));
     }
 
 
     @Override
-    public void deleteAll(Class<?> tClass) {
+    public <T extends DataSupport<T>> void deleteAll(Class<T> tClass) {
         delete(tClass, null, (Object) null);
     }
 
 
     @Override
-    public <T> List<T> find(Class<T> tClass, Consumer<Options> consumer) {
+    public <T extends DataSupport<T>> List<T> find(Class<T> tClass, Consumer<Options> consumer) {
         Options options = (consumer != null) ? new Options() : null;
         Optional.ofNullable(consumer).ifPresent(c -> c.accept(options));
         String sql = SQLTemplate.query(tClass, options);
@@ -195,7 +208,7 @@ final class Core implements DB {
 
 
     @Override
-    public <T> List<T> find(Class<T> tClass, List<Long> ids) {
+    public <T extends DataSupport<T>> List<T> find(Class<T> tClass, List<Long> ids) {
         StringBuilder builder = new StringBuilder(String.valueOf(ids));
         builder.deleteCharAt(0).deleteCharAt(builder.length() - 1);
         return find(tClass, options -> options.where("id in(?)", builder));
@@ -203,27 +216,139 @@ final class Core implements DB {
 
 
     @Override
-    public <T> List<T> find(Class<T> tClass, Long... ids) {
+    public <T extends DataSupport<T>> List<T> find(Class<T> tClass, Long... ids) {
         return find(tClass, Arrays.asList(ids));
     }
 
 
     @Override
-    public <T> List<T> findAll(Class<T> tClass) {
+    public <T extends DataSupport<T>> List<T> findAll(Class<T> tClass) {
         return find(tClass, (Consumer<Options>) null);
     }
 
 
     @Override
-    public <T> T findOne(Class<T> tClass, String predicate, Object... args) {
+    public <T extends DataSupport<T>> T findOne(Class<T> tClass, String predicate, Object... args) {
         List<T> list = find(tClass, options -> options.where(predicate, args));
         return (!list.isEmpty()) ? list.get(0) : null;
     }
 
 
     @Override
-    public <T> T findOne(Class<T> tClass, Long id) {
+    public <T extends DataSupport<T>> T findOne(Class<T> tClass, Long id) {
         return findOne(tClass, "id = ?", id);
     }
+
+
+    @Override
+    public <T extends DataSupport<T>> T first(Class<T> tClass, String predicate, Object... args) {
+        List<T> list = find(tClass, options -> options.where(predicate, args).order("id", Options.ASC));
+        return (!list.isEmpty()) ? list.get(0) : null;
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> T first(Class<T> tClass) {
+        return first(tClass, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> T last(Class<T> tClass, String predicate, Object... args) {
+        List<T> list = find(tClass, options -> options.where(predicate, args).order("id", Options.DESC));
+        return (!list.isEmpty()) ? list.get(0) : null;
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> T last(Class<T> tClass) {
+        return last(tClass, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> long count(Class<T> tClass, String predicate, Object... args) {
+        String s = SQLTemplate.query(tClass, new Options().select("count(*)").where(predicate, args));
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? resultSet.getLong(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> long count(Class<T> tClass) {
+        return count(tClass, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> double average(Class<T> tClass, String column, String predicate, Object... args) {
+        String s = SQLTemplate.query(tClass, new Options().select(String.format("avg(%s)", column)).where(predicate, args));
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? resultSet.getDouble(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> double average(Class<T> tClass, String column) {
+        return average(tClass, column, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number sum(Class<T> tClass, String column, String predicate, Object... args) {
+        String s = SQLTemplate.query(tClass, new Options().select(String.format("sum(%s)", column)).where(predicate, args));
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? (Number) resultSet.getObject(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number sum(Class<T> tClass, String column) {
+        return sum(tClass, column, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number max(Class<T> tClass, String column, String predicate, Object... args) {
+        String s = SQLTemplate.query(tClass, new Options().select(String.format("max(%s)", column)).where(predicate, args));
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? (Number) resultSet.getObject(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number max(Class<T> tClass, String column) {
+        return max(tClass, column, null, (Object) null);
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number min(Class<T> tClass, String column, String predicate, Object... args) {
+        String s = SQLTemplate.query(tClass, new Options().select(String.format("min(%s)", column)).where(predicate, args));
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(s)) {
+            return (resultSet.next()) ? (Number) resultSet.getObject(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public <T extends DataSupport<T>> Number min(Class<T> tClass, String column) {
+        return min(tClass, column, null, (Object) null);
+    }
+
 
 }

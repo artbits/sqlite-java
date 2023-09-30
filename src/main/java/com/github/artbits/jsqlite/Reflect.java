@@ -20,6 +20,7 @@ import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 final class Reflect<T> {
 
@@ -140,7 +141,8 @@ final class Reflect<T> {
                     columnsMap.put(column, true);
                 }
             }
-            Reflect<T> reflect = new Reflect<>(tClass.newInstance());
+            T t = tClass.getConstructor(Consumer.class).newInstance((Consumer<T>) (c -> {}));
+            Reflect<T> reflect = new Reflect<>(t);
             for (Field field : reflect.fieldMap.values()) {
                 String name = field.getName();
                 if (!columnsMap.isEmpty() && !columnsMap.getOrDefault(name, false)) {
