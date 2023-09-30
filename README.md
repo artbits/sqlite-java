@@ -43,7 +43,7 @@ Maven:
 ## Usage
 Let Java classes be mapped into database tables. extends ``DataSupport`` class. The fields ``id``, ``createdAt``, and ``updatedAt`` are internal fields, please read them only when using them.
 ```java
-public static class User extends DataSupport<User> {
+public class User extends DataSupport<User> {
     public String name;
     public Integer age;
     public Boolean vip;
