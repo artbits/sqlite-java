@@ -124,6 +124,20 @@ final class SQLTemplate {
     }
 
 
+    static <T> String createIndex(Class<T> tClass, String column) {
+        String table = tClass.getSimpleName().toLowerCase();
+        String index = $("idx_%s_%s", table, column);
+        return $("create index %s on %s(%s)", index, table, column);
+    }
+
+
+    static <T> String dropIndex(Class<T> tClass, String column) {
+        String table = tClass.getSimpleName().toLowerCase();
+        String index = $("idx_%s_%s", table, column);
+        return $("drop index %s", index);
+    }
+
+
     private static String $(String format, Object... objects) {
         return String.format(format, objects);
     }

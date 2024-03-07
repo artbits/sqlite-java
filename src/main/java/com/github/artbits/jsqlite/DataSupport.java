@@ -19,6 +19,8 @@ package com.github.artbits.jsqlite;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import static com.github.artbits.jsqlite.Core.gson;
+
 public class DataSupport<T> {
 
     Long id;
@@ -53,7 +55,7 @@ public class DataSupport<T> {
 
 
     public final String toJson() {
-        return new JsonObject(this).toString();
+        return gson.toJson(this);
     }
 
 

@@ -1,5 +1,6 @@
 package api_test;
 
+import com.github.artbits.jsqlite.Column;
 import com.github.artbits.jsqlite.DB;
 import com.github.artbits.jsqlite.DataSupport;
 import com.github.artbits.jsqlite.Options;
@@ -13,9 +14,13 @@ public final class APITest {
 
 
     public static class User extends DataSupport<User> {
+        @Column(index = true)
+        public Long uid;
         public String name;
         public Integer age;
         public Boolean vip;
+        @Column(json = true)
+        public List<String> labels;
 
         public User(Consumer<User> consumer) {
             super(consumer);
@@ -38,7 +43,7 @@ public final class APITest {
     DB connect() {
         DB db = DB.connect("database/example.db");
         db.tables(User.class);
-        db.deleteAll(User.class);
+//        db.deleteAll(User.class);
         return db;
     }
 

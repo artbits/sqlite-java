@@ -16,16 +16,23 @@
 
 package com.github.artbits.jsqlite;
 
+import com.google.gson.Gson;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 final class Core implements DB {
 
-    private static Connection connection;
+    final static Gson gson = new Gson();
+
+    private final ReentrantLock lock = new ReentrantLock();
+
+    private final Connection connection;
 
 
     Core(String path) {
@@ -57,6 +64,7 @@ final class Core implements DB {
     @Override
     public void tables(Class<?>... classes) {
         HashMap<String, HashMap<String, String>> tablesMap = new HashMap<>();
+        HashMap<String, Boolean> indexMap = new HashMap<>();
         String s = SQLTemplate.query("sqlite_master", new Options().where("type = ?", "table"));
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(s)) {
             DatabaseMetaData metaData = connection.getMetaData();
@@ -71,14 +79,24 @@ final class Core implements DB {
                     }
                 }
                 tablesMap.put(tableName, tableColumnTypeMap);
+                try (ResultSet set = metaData.getIndexInfo(null, null, tableName, false, false)){
+                    while (set.next()) {
+                        String index = set.getString("INDEX_NAME");
+                        String column = set.getString("COLUMN_NAME");
+                        if (index != null) {
+                            indexMap.put(column, true);
+                        }
+                    }
+                }
             }
             for (Class<?> tClass : classes) {
                 String tableName = tClass.getSimpleName().toLowerCase();
                 HashMap<String, String> tableColumnTypeMap = tablesMap.getOrDefault(tableName, null);
+                Reflect<?> reflect = new Reflect<>(tClass);
                 if (tableColumnTypeMap == null) {
                     statement.executeUpdate(SQLTemplate.create(tClass));
                 } else {
-                    new Reflect<>(tClass).getDBColumnsWithType((column, type) -> {
+                    reflect.getDBColumnsWithType((column, type) -> {
                         if (tableColumnTypeMap.getOrDefault(column, null) == null) {
                             try {
                                 statement.executeUpdate(SQLTemplate.addTableColumn(tableName, column, type));
@@ -88,6 +106,24 @@ final class Core implements DB {
                         }
                     });
                 }
+                reflect.getIndexList(column -> {
+                    try {
+                        if (indexMap.getOrDefault(column, false)) {
+                            indexMap.remove(column, true);
+                        } else {
+                            statement.executeUpdate(SQLTemplate.createIndex(tClass, column));
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                indexMap.keySet().forEach(column -> {
+                    try {
+                        statement.executeUpdate(SQLTemplate.dropIndex(tClass, column));
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -120,32 +156,34 @@ final class Core implements DB {
 
     @Override
     public <T extends DataSupport<T>> void insert(T t) {
-        synchronized (this) {
-            try (Statement statement = connection.createStatement()) {
-                t.createdAt = System.currentTimeMillis();
-                t.updatedAt = t.createdAt;
-                statement.executeUpdate(SQLTemplate.insert(t));
-                try (ResultSet result = statement.executeQuery("select last_insert_rowid()")) {
-                    if (result.next()) {
-                        t.id = result.getLong(1);
-                    }
+        try (Statement statement = connection.createStatement()) {
+            lock.lock();
+            t.createdAt = System.currentTimeMillis();
+            t.updatedAt = t.createdAt;
+            statement.executeUpdate(SQLTemplate.insert(t));
+            try (ResultSet result = statement.executeQuery("select last_insert_rowid()")) {
+                if (result.next()) {
+                    t.id = result.getLong(1);
                 }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
             }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
 
     @Override
     public <T extends DataSupport<T>> void update(T t, String predicate, Object... args) {
-        synchronized (this) {
-            try (Statement statement = connection.createStatement()) {
-                t.updatedAt = System.currentTimeMillis();
-                statement.executeUpdate(SQLTemplate.update(t, new Options().where(predicate, args)));
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+        try (Statement statement = connection.createStatement()) {
+            lock.lock();
+            t.updatedAt = System.currentTimeMillis();
+            statement.executeUpdate(SQLTemplate.update(t, new Options().where(predicate, args)));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -158,13 +196,14 @@ final class Core implements DB {
 
     @Override
     public <T extends DataSupport<T>> void delete(Class<T> tClass, String predicate, Object... args) {
-        synchronized (this) {
-            String sql = SQLTemplate.delete(tClass, new Options().where(predicate, args));
-            try (Statement statement = connection.createStatement()) {
-                statement.executeUpdate(sql);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+        String sql = SQLTemplate.delete(tClass, new Options().where(predicate, args));
+        try (Statement statement = connection.createStatement()) {
+            lock.lock();
+            statement.executeUpdate(sql);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 

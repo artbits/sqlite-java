@@ -22,6 +22,8 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+import static com.github.artbits.jsqlite.Core.gson;
+
 final class Reflect<T> {
 
     private final Map<String, Field> fieldMap = new LinkedHashMap<>();
@@ -43,7 +45,9 @@ final class Reflect<T> {
         while (clazz != null){
             for (Field field : clazz.getDeclaredFields()) {
                 field.setAccessible(true);
-                fieldMap.put(field.getName(), field);
+                if (!isIgnore(field)) {
+                    fieldMap.put(field.getName(), field);
+                }
             }
             clazz = clazz.getSuperclass();
         }
@@ -96,14 +100,19 @@ final class Reflect<T> {
     }
 
 
-    Object getDBValue(String fieldName) {
+    Object getDBValue(Field field) {
         try {
-            Field field = fieldMap.getOrDefault(fieldName, null);
-            if (field != null && field.get(t) != null) {
+            String fieldName = field.getName();
+            Field dbField = fieldMap.getOrDefault(fieldName, null);
+            Object dbValue = (dbField != null) ? dbField.get(t) : null;
+            if (dbField != null && dbValue != null) {
+                if (isJson(field)) {
+                    return String.format("'%s'", gson.toJson(dbValue));
+                }
                 switch (getDatabaseType(fieldName)) {
-                    case "text": return String.format("'%s'", field.get(t));
-                    case "blob": return (Objects.equals(field.get(t), true)) ? 1 : 0;
-                    default: return field.get(t);
+                    case "text": return String.format("'%s'", dbValue);
+                    case "blob": return (Objects.equals(dbValue, true)) ? 1 : 0;
+                    default: return dbValue;
                 }
             }
             return null;
@@ -115,15 +124,28 @@ final class Reflect<T> {
 
     void getDBColumnsWithValue(BiConsumer<String, Object> consumer) {
         for (Field field : fieldMap.values()) {
-            consumer.accept(field.getName(), getDBValue(field.getName()));
+            consumer.accept(field.getName(), getDBValue(field));
         }
     }
 
 
     void getDBColumnsWithType(BiConsumer<String, String> consumer) {
         for (Field field : fieldMap.values()) {
+            if (isJson(field)) {
+                consumer.accept(field.getName(), "text");
+                continue;
+            }
             consumer.accept(field.getName(), getDatabaseType(field.getName()));
         }
+    }
+
+
+    void getIndexList(Consumer<String> consumer) {
+        fieldMap.values().forEach(field -> {
+            if (isIndex(field)) {
+                consumer.accept(field.getName());
+            }
+        });
     }
 
 
@@ -146,6 +168,10 @@ final class Reflect<T> {
             for (Field field : reflect.fieldMap.values()) {
                 String name = field.getName();
                 if (!columnsMap.isEmpty() && !columnsMap.getOrDefault(name, false)) {
+                    continue;
+                }
+                if (isJson(field)) {
+                    reflect.setValue(name, gson.fromJson(resultSet.getString(name), field.getType()));
                     continue;
                 }
                 String type = field.getType().getSimpleName().toLowerCase();
@@ -182,6 +208,42 @@ final class Reflect<T> {
             return reflect.get();
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+
+    static boolean isIgnore(Field field) {
+        if (field.isAnnotationPresent(Column.class)) {
+            Column column = field.getAnnotation(Column.class);
+            return column.ignore();
+        }
+        return false;
+    }
+
+
+    static boolean isIndex(Field field) {
+        if (field.isAnnotationPresent(Column.class)) {
+            Column column = field.getAnnotation(Column.class);
+            return column.index();
+        }
+        return false;
+    }
+
+
+    static boolean isJson(Field field) {
+        if (field.isAnnotationPresent(Column.class)) {
+            Column column = field.getAnnotation(Column.class);
+            return column.json();
+        }
+        return false;
+    }
+
+
+    static Column getColumn(Field field) {
+        if (field.isAnnotationPresent(Column.class)) {
+            return field.getAnnotation(Column.class);
+        } else {
+            return null;
         }
     }
 
