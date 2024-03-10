@@ -27,9 +27,11 @@ import static com.github.artbits.jsqlite.Core.gson;
 final class Reflect<T> {
 
     private final Map<String, Field> fieldMap = new LinkedHashMap<>();
+    private Class<?> tClass;
     private T t;
 
     Reflect(Class<?> tClass) {
+        this.tClass = tClass;
         newInstance(tClass);
     }
 
@@ -140,10 +142,13 @@ final class Reflect<T> {
     }
 
 
-    void getIndexList(Consumer<String> consumer) {
+    void getIndexList(BiConsumer<String, String> consumer) {
+        String table = tClass.getSimpleName().toLowerCase();
         fieldMap.values().forEach(field -> {
             if (isIndex(field)) {
-                consumer.accept(field.getName());
+                String column = field.getName();
+                String index = String.format("idx_%s_%s", table, column);
+                consumer.accept(index, column);
             }
         });
     }

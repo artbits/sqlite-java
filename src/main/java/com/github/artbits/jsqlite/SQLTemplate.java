@@ -131,9 +131,7 @@ final class SQLTemplate {
     }
 
 
-    static <T> String dropIndex(Class<T> tClass, String column) {
-        String table = tClass.getSimpleName().toLowerCase();
-        String index = $("idx_%s_%s", table, column);
+    static <T> String dropIndex(String index) {
         return $("drop index %s", index);
     }
 

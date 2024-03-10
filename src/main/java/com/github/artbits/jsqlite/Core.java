@@ -64,7 +64,7 @@ final class Core implements DB {
     @Override
     public void tables(Class<?>... classes) {
         HashMap<String, HashMap<String, String>> tablesMap = new HashMap<>();
-        HashMap<String, Boolean> indexMap = new HashMap<>();
+        HashMap<String, String> indexMap = new HashMap<>();
         String s = SQLTemplate.query("sqlite_master", new Options().where("type = ?", "table"));
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(s)) {
             DatabaseMetaData metaData = connection.getMetaData();
@@ -83,9 +83,7 @@ final class Core implements DB {
                     while (set.next()) {
                         String index = set.getString("INDEX_NAME");
                         String column = set.getString("COLUMN_NAME");
-                        if (index != null) {
-                            indexMap.put(column, true);
-                        }
+                        Optional.ofNullable(index).ifPresent(i -> indexMap.put(index, column));
                     }
                 }
             }
@@ -106,10 +104,10 @@ final class Core implements DB {
                         }
                     });
                 }
-                reflect.getIndexList(column -> {
+                reflect.getIndexList((index, column) -> {
                     try {
-                        if (indexMap.getOrDefault(column, false)) {
-                            indexMap.remove(column, true);
+                        if (indexMap.get(index) != null) {
+                            indexMap.remove(index, column);
                         } else {
                             statement.executeUpdate(SQLTemplate.createIndex(tClass, column));
                         }
@@ -117,14 +115,14 @@ final class Core implements DB {
                         throw new RuntimeException(e);
                     }
                 });
-                indexMap.keySet().forEach(column -> {
-                    try {
-                        statement.executeUpdate(SQLTemplate.dropIndex(tClass, column));
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
             }
+            indexMap.forEach((index, column) -> {
+                try {
+                    statement.executeUpdate(SQLTemplate.dropIndex(index));
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
