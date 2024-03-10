@@ -38,3 +38,8 @@ wrapper {
     gradleVersion = "8.0"
     distributionType = Wrapper.DistributionType.ALL
 }
+
+tasks.register('install', Copy) {
+    from 'build/libs'
+    into 'C:/Users/artbits/.m2/repository/sqlite-java'
+}
