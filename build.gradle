@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.github.artbits'
-version = '0.0.1'
+version = '1.0.8'
 
 repositories {
     maven { url 'https://maven.aliyun.com/nexus/content/groups/public/' }
@@ -37,9 +37,4 @@ publishing {
 wrapper {
     gradleVersion = "8.0"
     distributionType = Wrapper.DistributionType.ALL
-}
-
-tasks.register('install', Copy) {
-    from 'build/libs'
-    into 'C:/Users/artbits/.m2/repository/sqlite-java'
 }
